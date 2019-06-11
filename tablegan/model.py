@@ -9,8 +9,8 @@ from __future__ import division
 
 import time
 import tensorflow as tf
-from ops import *
-from utils import *
+from tablegan.ops import *
+from tablegan.utils import *
 
 
 def conv_out_size_same(size, stride):

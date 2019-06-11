@@ -9,9 +9,9 @@ import datetime
 import tensorflow as tf
 import sys
 
-from model import TableGan
+from tablegan.model import TableGan
 
-from utils import pp, generate_data, show_all_variables
+from tablegan.utils import pp, generate_data, show_all_variables
 
 flags = tf.app.flags
 
