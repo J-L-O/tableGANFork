@@ -289,9 +289,9 @@ class TableGan(object):
             .minimize(self.g_loss, var_list=self.g_vars)
 
         try:
-            tf.global_variables_initializer().run()
+            tf.global_variables_initializer().run(session=self.sess)
         except:
-            tf.initialize_all_variables().run()
+            tf.initialize_all_variables().run(session=self.sess)
 
         self.g_sum = merge_summary([self.z_sum, self.d__sum,
                                     self.G_sum, self.g_loss_sum])
@@ -431,7 +431,7 @@ class TableGan(object):
                         self.z: batch_z,
                         self.y: batch_labels,
                         self.y_normal: batch_labels_normal
-                    })
+                    }, session=self.sess)
 
                     errG = self.g_loss.eval({
                         self.z: batch_z,
@@ -442,17 +442,17 @@ class TableGan(object):
                         self.prev_gmean_: gmean_,
                         self.prev_gvar: gvar,
                         self.prev_gvar_: gvar_
-                    })
+                    }, session=self.sess)
 
                     errD_fake = self.d_loss_fake.eval({
                         self.z: batch_z,
                         self.y: batch_labels
-                    })
+                    }, session=self.sess)
 
                     errD_real = self.d_loss_real.eval({
                         self.inputs: batch_images,
                         self.y: batch_labels
-                    })
+                    }, session=self.sess)
                 else:
                     _, summary_str = self.sess.run([d_optim, self.d_sum],
                                                    feed_dict={
