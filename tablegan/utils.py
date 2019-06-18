@@ -321,117 +321,123 @@ def compare(real, fake, save_dir, col_prefix, CDF=True, Hist=True):
         print(col_prefix + " : Cumulative Dist of Col " + str(i + 1))
 
 
+def _generate_data(sess, model, config):
+    input_size = len(model.data_X)
+
+    dim = config.output_width  # 8
+
+    merged_data = np.ndarray([config.batch_size * (input_size // config.batch_size), dim, dim],
+                             dtype=float)  # 64 * 234 * 16 * 16
+
+        # save_dir = save_dir + "/" + config.test_id
+
+    # if not os.path.exists(save_dir):
+    #       os.makedirs(save_dir)
+
+    # samples_dir = save_dir + '/samples'
+    #
+    # if not os.path.exists(samples_dir):
+    #       os.makedirs(samples_dir)
+
+    for idx in xrange(input_size // config.batch_size):
+        print(" [*] %d" % idx)
+        z_sample = np.random.uniform(-1, 1, size=(config.batch_size, model.z_dim))
+
+        zero_labeles = model.zero_one_ratio
+
+        # if config.dataset == "LACity":
+        #   zero_labeles= 0.48       # Based the ratio of labels in initial dataset
+        #
+        # elif config.dataset == "Health":
+        #   zero_labeles= 0.91          # Based the ratio of labels in initial dataset
+        #
+        # elif config.dataset == "Adult":
+        #   # Total =32561 ,  0s = 22980  = 70.6%
+        #   zero_labeles= 0.706       # Based the ratio of labels in initial dataset
+        #
+        # elif config.dataset == "Ticket":
+        #   # Total =80000
+        #   zero_labeles= 0.575 # Based the ratio of labels in initial dataset
+
+        y = np.ones((config.batch_size, 1))
+
+        y[: int(zero_labeles * config.batch_size)] = 0
+        np.random.shuffle(y)
+
+        print("y shape " + str(y.shape))
+        y = y.astype('int16')
+
+        y_one_hot = np.zeros((config.batch_size, model.y_dim))
+
+        # y indicates the index of ones in y_one_hot : in this case y_dim =2 so indexe are 0 or 1
+        y_one_hot[np.arange(config.batch_size), y] = 1
+
+        samples = sess.run(model.sampler, feed_dict={model.z: z_sample, model.y: y_one_hot, model.y_normal: y})
+
+        # Merging Data for each batch size
+        merged_data[idx * config.batch_size: (idx + 1) * config.batch_size] = samples.reshape(samples.shape[0],
+                                                                                              samples.shape[1],
+                                                                                              samples.shape[
+                                                                                                  2])  # 234 * 64 * 16 *16
+
+    # All generated data is ready in merged_data , now reshape it to a tabular marix
+
+    fake_data = merged_data.reshape(merged_data.shape[0], merged_data.shape[1] * merged_data.shape[2])
+
+    # Selecting the correct number of atributes (used in training)
+    fake_data = fake_data[:, : model.attrib_num]
+
+    print(" Fake Data shape= " + str(fake_data.shape))
+
+    origin_data_path = model.train_data_path  # './data/'+ config.dataset+ '/train_'+ config.dataset + '_cleaned'
+
+    if os.path.exists(origin_data_path + ".csv"):
+        origin_data = pd.read_csv(origin_data_path + ".csv", sep=';')
+
+    elif os.path.exists(origin_data_path + ".pickle"):
+        with open(origin_data_path + '.pickle', 'rb') as handle:
+            origin_data = pickle.load(handle)
+    else:
+        print("Error Loading Dataset !!")
+        exit(1)
+
+    min_max_scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
+
+    min_max_scaler.fit(origin_data)
+
+    # Fake Gen --> Scaling --> Rounding --> 1) Classification , 2)-->Normalizaing --> ( Euclidian Distance, CDF)
+    # transforming data back to original scale
+    scaled_fake = min_max_scaler.inverse_transform(fake_data)
+
+    # Rounding Data
+    round_columns = range(scaled_fake.shape[1])
+
+    round_scaled_fake = rounding(scaled_fake, origin_data.as_matrix(), round_columns)
+
+    # Required for Classification NN evaluation only
+    # save_data(round_scaled_fake , save_dir +'/' + config.test_id + "_scaled_fake_tabular.pickle" )
+
+    rsf_out = pd.DataFrame(round_scaled_fake)
+
+    return rsf_out
+
+
 def generate_data(sess, model, config, option):
     print("Start Generatig Data .... ")
     image_frame_dim = int(math.ceil(config.batch_size ** .5))
 
     if option == 1:
 
-        input_size = len(model.data_X)
-
-        dim = config.output_width  # 8
-
-        merged_data = np.ndarray([config.batch_size * (input_size // config.batch_size), dim, dim],
-                                 dtype=float)  # 64 * 234 * 16 * 16
+        rsf_out = _generate_data(sess, model, config)
 
         save_dir = './{}'.format(config.sample_dir + "/" + config.dataset)  # config.test_id)
 
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-            # save_dir = save_dir + "/" + config.test_id
-
-        # if not os.path.exists(save_dir):
-        #       os.makedirs(save_dir)
-
-        # samples_dir = save_dir + '/samples'
-        #
-        # if not os.path.exists(samples_dir):
-        #       os.makedirs(samples_dir)
-
-        for idx in xrange(input_size // config.batch_size):
-            print(" [*] %d" % idx)
-            z_sample = np.random.uniform(-1, 1, size=(config.batch_size, model.z_dim))
-
-            zero_labeles = model.zero_one_ratio
-
-            # if config.dataset == "LACity":
-            #   zero_labeles= 0.48       # Based the ratio of labels in initial dataset
-            #
-            # elif config.dataset == "Health":
-            #   zero_labeles= 0.91          # Based the ratio of labels in initial dataset
-            #
-            # elif config.dataset == "Adult":
-            #   # Total =32561 ,  0s = 22980  = 70.6%
-            #   zero_labeles= 0.706       # Based the ratio of labels in initial dataset
-            #
-            # elif config.dataset == "Ticket":
-            #   # Total =80000
-            #   zero_labeles= 0.575 # Based the ratio of labels in initial dataset
-
-            y = np.ones((config.batch_size, 1))
-
-            y[: int(zero_labeles * config.batch_size)] = 0
-            np.random.shuffle(y)
-
-            print("y shape " + str(y.shape))
-            y = y.astype('int16')
-
-            y_one_hot = np.zeros((config.batch_size, model.y_dim))
-
-            # y indicates the index of ones in y_one_hot : in this case y_dim =2 so indexe are 0 or 1
-            y_one_hot[np.arange(config.batch_size), y] = 1
-
-            samples = sess.run(model.sampler, feed_dict={model.z: z_sample, model.y: y_one_hot, model.y_normal: y})
-
-            # Merging Data for each batch size
-            merged_data[idx * config.batch_size: (idx + 1) * config.batch_size] = samples.reshape(samples.shape[0],
-                                                                                                  samples.shape[1],
-                                                                                                  samples.shape[
-                                                                                                      2])  # 234 * 64 * 16 *16
-
-        # All generated data is ready in merged_data , now reshape it to a tabular marix
-
-        fake_data = merged_data.reshape(merged_data.shape[0], merged_data.shape[1] * merged_data.shape[2])
-
-        # Selecting the correct number of atributes (used in training)
-        fake_data = fake_data[:, : model.attrib_num]
-
-        print(" Fake Data shape= " + str(fake_data.shape))
-
-        origin_data_path = model.train_data_path  # './data/'+ config.dataset+ '/train_'+ config.dataset + '_cleaned'
-
-        if os.path.exists(origin_data_path + ".csv"):
-            origin_data = pd.read_csv(origin_data_path + ".csv", sep=';')
-
-        elif os.path.exists(origin_data_path + ".pickle"):
-            with open(origin_data_path + '.pickle', 'rb') as handle:
-                origin_data = pickle.load(handle)
-        else:
-            print("Error Loading Dataset !!")
-            exit(1)
-
-        min_max_scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
-
-        min_max_scaler.fit(origin_data)
-
-        # Fake Gen --> Scaling --> Rounding --> 1) Classification , 2)-->Normalizaing --> ( Euclidian Distance, CDF)
-        # transforming data back to original scale
-        scaled_fake = min_max_scaler.inverse_transform(fake_data)
-
-        # Rounding Data
-        round_columns = range(scaled_fake.shape[1])
-
-        round_scaled_fake = rounding(scaled_fake, origin_data.as_matrix(), round_columns)
-
-        # Required for Classification NN evaluation only
-        # save_data(round_scaled_fake , save_dir +'/' + config.test_id + "_scaled_fake_tabular.pickle" )
-
-        rsf_out = pd.DataFrame(round_scaled_fake)
-
         rsf_out.to_csv(f'{save_dir}/{config.dataset}_{config.test_id}_fake.csv' , index=False, sep=';')
 
-        print("Generated Data shape = " + str(round_scaled_fake.shape))
+        print("Generated Data shape = " + str(rsf_out.shape))
 
     elif option == 5:  # Results for ShadowGAN (memberhsip attack).
 
